@@ -3,7 +3,7 @@
 /* Copyright(c) 1998-1999, ALICE Experiment at CERN, All rights reserved. *
  * See cxx source for full Copyright notice                               */
 
-/* $Id$ */ 
+/* $Id$ */
 
 /// \ingroup pwg_muondep_misc
 /// \class AliAnalysisTaskMuonRefit
@@ -22,65 +22,68 @@ class AliMUONTrackHitPattern;
 
 class AliAnalysisTaskMuonRefit : public AliAnalysisTaskSE {
 public:
-  
+
   AliAnalysisTaskMuonRefit();
   AliAnalysisTaskMuonRefit(const char *name);
   virtual ~AliAnalysisTaskMuonRefit();
-  
+
   /// Set location of the default OCDB storage (if not set use "raw://")
   void SetDefaultStorage(const char* ocdbPath) { fDefaultStorage = ocdbPath; }
-  
+
   // reset the cluster resolution (by default use the one set in the recoParam)
   void ResetClusterResolution(Int_t chId, Double_t valNB, Double_t valB);
   void ResetClusterResolution(Double_t valNB[10], Double_t valB[10]);
-  
+
   /// Enable track improvement (clusters/tracks that do not pass the sigma cut will be removed)
   /// If sigmaCut < 0: use the one set in the recoParam
   /// By default the "improveTrack" flag and the sigma cut are taken from the recoParam
-  void ImproveTracks(Bool_t flag = kTRUE, Double_t sigmaCut = -1.) {fImproveTracks = flag; fSigmaCut = sigmaCut;} 
-  
+  void ImproveTracks(Bool_t flag = kTRUE, Double_t sigmaCut = -1.) {fImproveTracks = flag; fSigmaCut = sigmaCut;}
+
   /// Set the sigma cut for tracker/trigger track matching (by default use the one set in the recoParam)
   void SetSigmaCutForTrigger(Double_t val) {fSigmaCutForTrigger = val;}
-  
+
   // Set OCDB path + version/subversion to find the alignment file used in the reco (if not set use default storage)
   void SetAlignStorage(const char* ocdbPath, Int_t version = -1, Int_t subVersion = -1);
-  
+
   // Re-align clusters before refitting and set OCDB paths + versions/subversions to find the old/new alignment files
   void ReAlign(const char* oldAlignStorage = 0x0, Int_t oldVersion = -1, Int_t oldSubVersion = -1,
                const char* newAlignStorage = "", Int_t newVersion = -1, Int_t newSubVersion = -1);
-  
+
   // Set the magnetic field map to be used during refitting
   void SetFieldPath(const char* field) { fField = field; }
-  
+
   /// set the flag to remove mono-cathod clusters (either considering all the pads or only the ones directly below)
   void RemoveMonoCathodClusters(Bool_t flag = kTRUE, Bool_t checkAllPads = kTRUE) {fRemoveMonoCathCl = flag; fCheckAllPads = checkAllPads;}
-  
+
   /// Tag the refitted tracks rejected by improvement (or no longer matched) instead of removing them (or the trigger part)
   /// Eventually keep the old track parameters if the refitted track no longer match the trigger
   void TagBadTracks(Bool_t tag = kTRUE, Bool_t keep = kTRUE) {fTagBadTracks = tag; fKeepOldParam = keep;}
-  
+
+  /// Set flag to refit using the recomputed trigger response
+  void SetUseRecomputedTrigger(Bool_t useRecomputedTrigger = kTRUE) { fUseRecomputedTrigger = useRecomputedTrigger; }
+
   virtual void   UserCreateOutputObjects();
   virtual void   UserExec(Option_t *);
   virtual void   NotifyRun();
   virtual void   Terminate(Option_t *);
-  
+
 private:
-  
+
   /// Not implemented
   AliAnalysisTaskMuonRefit(const AliAnalysisTaskMuonRefit& rhs);
   /// Not implemented
   AliAnalysisTaskMuonRefit& operator = (const AliAnalysisTaskMuonRefit& rhs);
-  
+
   void ModifyCluster(AliMUONVCluster& cl);
   void CheckPads(AliMUONVCluster *cl, Bool_t &hasBending, Bool_t &hasNonBending) const;
   void CheckPadsBelow(AliMUONVCluster *cl, Bool_t &hasBending, Bool_t &hasNonBending) const;
   Bool_t SetMagField() const;
-  
+
 private:
-  
+
   Double_t fClusterResNB[10]; ///< cluster resolution in non-bending direction
   Double_t fClusterResB[10];  ///< cluster resolution in bending direction
-  
+
   TString  fDefaultStorage;     ///< location of the default OCDB storage
   Bool_t   fImproveTracks;      ///< enable track improvement
   Double_t fSigmaCut;           ///< sigma cut for track improvement
@@ -99,13 +102,14 @@ private:
   Bool_t   fCheckAllPads;       ///< use all pads or only the ones directly below the cluster to look for mono-cathods
   Bool_t   fTagBadTracks;       ///< tag the bad tracks instead of removing them
   Bool_t   fKeepOldParam;       ///< keep old track parameters if the refitted track no longer match the trigger
+  Bool_t   fUseRecomputedTrigger; ///< Use recomputed trigger response
 
   AliMUONTriggerCircuit  *fTriggerCircuit;  //!< trigger circuit
   AliMUONESDInterface    *fESDInterface;    //!< esd interface to recover muon objects
   AliMUONRefitter        *fRefitter;        //!< refitter object
   AliMUONTrackHitPattern *fTrackHitPattern; //!< object to perform the tracker/trigger track matching
-  
-  ClassDef(AliAnalysisTaskMuonRefit, 3); // track refitter
+
+  ClassDef(AliAnalysisTaskMuonRefit, 4); // track refitter
 };
 
 //________________________________________________________________________
@@ -176,4 +180,3 @@ inline void AliAnalysisTaskMuonRefit::ReAlign(const char* oldAlignStorage, Int_t
 }
 
 #endif
-
