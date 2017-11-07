@@ -230,9 +230,10 @@ void AliAnalysisTaskMuonRefit::UserExec(Option_t *)
 
   // recover the hit pattern for all trigger tracks
   TClonesArray *esdTracks = (TClonesArray*) esd->FindListObject("MuonTracks");
-  TClonesArray* tmpEsdTracks = static_cast<TClonesArray*>(esdTracks->Clone()); // REMEMBER TO CUT
+  TString debugStr = ""; Bool_t hasRecomputed = kFALSE;// REMEMBER TO CUT
   for (Int_t iTrack = 0; iTrack < nTracks; iTrack++) {
     AliESDMuonTrack* esdTrack = (AliESDMuonTrack*) esdTracks->UncheckedAt(iTrack);
+    debugStr += Form("Track %i board %i errors %i (serious %i) recomputed %i\n",esdTrack->GetUniqueID(),esdTrack->LoCircuit(),esdTrack->GetTriggerAlgoErrors(),AliMUONLocalTrigger::AlgoErrAffectsTrigTrackReco(esdTrack->GetTriggerAlgoErrors()),esdTrack->IsRecomputedTrigger()); if ( esdTrack->IsRecomputedTrigger() ) hasRecomputed = kTRUE; // REMEMBER TO CUT
     if (!esdTrack->ContainTriggerData()) continue;
     // use the UniqueID of the local trigger in case several tracks match the same trigger
     AliMUONLocalTrigger *locTrg = fESDInterface->FindLocalTrigger(esdTrack->LoCircuit(),esdTrack->IsRecomputedTrigger());
@@ -379,16 +380,14 @@ void AliAnalysisTaskMuonRefit::UserExec(Option_t *)
     }
   }
 
-  if ( esdTracks->GetEntries() != nTracks || esdTrack->GetTriggerAlgoErrors() ) { // REMEMBER TO CUT
+  if ( esdTracks->GetEntries() != nTracks || hasRecomputed ) { // REMEMBER TO CUT
     printf("Ntracks %i => %i\n",nTracks,esdTracks->GetEntries()); // REMEMBER TO CUT
+    debugStr += " ==> \n";
     AliESDMuonTrack* tmpTrack = nullptr; // REMEMBER TO CUT
-    TIter nextOld(tmpEsdTracks); // REMEMBER TO CUT
-    while ( (tmpTrack = static_cast<AliESDMuonTrack*>(nextOld())) ) printf("Track %i board %i errors %i recomputed %i\n",tmpTrack->GetUniqueID(),tmpTrack->LoCircuit(),tmpTrack->GetTriggerAlgoErrors(),tmpTrack->IsRecomputedTrigger()); // REMEMBER TO CUT
-    printf(" ==> \n"); // REMEMBER TO CUT
     TIter next(esdTracks); // REMEMBER TO CUT
-    while ( (tmpTrack = static_cast<AliESDMuonTrack*>(next())) ) printf("Track %i board %i errors %i recomputed %i\n",tmpTrack->GetUniqueID(),tmpTrack->LoCircuit(),tmpTrack->GetTriggerAlgoErrors(),tmpTrack->IsRecomputedTrigger()); // REMEMBER TO CUT
+    while ( (tmpTrack = static_cast<AliESDMuonTrack*>(next())) ) debugStr += Form("Track %i board %i errors %i (serious %i) recomputed %i\n",tmpTrack->GetUniqueID(),tmpTrack->LoCircuit(),tmpTrack->GetTriggerAlgoErrors(),AliMUONLocalTrigger::AlgoErrAffectsTrigTrackReco(tmpTrack->GetTriggerAlgoErrors()),tmpTrack->IsRecomputedTrigger()); // REMEMBER TO CUT
+    printf("%s\n", debugStr.Data());
   } // REMEMBER TO CUT
-  delete tmpEsdTracks; // REMEMBER TO CUT
 
 }
 
