@@ -132,7 +132,7 @@ void AliAnalysisTaskTrigChEff::FinishTaskOutput()
   TString physSel = fPhysSelKeys->At(kPhysSelPass)->GetName();
   TString trigClass = "ANY";
   TString centrality = "-100_200";
-  
+
   TList* outList = fAnalysisOutput->GetEffHistoList(physSel, trigClass, centrality, AliTrigChEffOutput::kSelectTrack,AliTrigChEffOutput::kMatchApt,AliTrigChEffOutput::kEffFromTrack);
   outList->SetOwner(kFALSE);
   TIter next(outList);
@@ -192,7 +192,7 @@ void AliAnalysisTaskTrigChEff::ProcessEvent(TString physSel, const TObjArray& se
   TArrayI othersEfficient(4);
 
   AliVParticle* track = 0x0;
-  
+
   UInt_t addMask[4] = {0, AliMuonTrackCuts::kMuMatchApt, AliMuonTrackCuts::kMuMatchApt|AliMuonTrackCuts::kMuMatchLpt, AliMuonTrackCuts::kMuMatchApt|AliMuonTrackCuts::kMuMatchLpt|AliMuonTrackCuts::kMuMatchHpt};
 
   Int_t nTracks = AliAnalysisMuonUtility::GetNTracks(InputEvent());
@@ -203,7 +203,7 @@ void AliAnalysisTaskTrigChEff::ProcessEvent(TString physSel, const TObjArray& se
 
     Int_t matchTrig = AliAnalysisMuonUtility::GetMatchTrigger(track);
     UInt_t selection = fMuonTrackCuts->GetSelectionMask(track);
-    
+
     // Apply the sharp pt cut according to the matched pt level of the track
     UInt_t filterMask = fMuonTrackCuts->GetFilterMask() | addMask[matchTrig];
     Bool_t isSelected = ( ( selection & filterMask ) == filterMask );
@@ -219,22 +219,22 @@ void AliAnalysisTaskTrigChEff::ProcessEvent(TString physSel, const TObjArray& se
         pattern = AliAnalysisMuonUtility::GetMUONTrigHitsMapTrg(track);
         board = ( AliAnalysisMuonUtility::IsAODEvent(InputEvent()) ) ? AliESDMuonTrack::GetCrossedBoard(pattern) : ((AliESDMuonTrack*)track)->LoCircuit();
       }
-      
+
       Int_t effFlag = AliESDMuonTrack::GetEffFlag(pattern);
-      
+
       if ( effFlag < AliESDMuonTrack::kChEff ) {
         for ( Int_t itrackSel=0; itrackSel<AliTrigChEffOutput::kNtrackSel; ++itrackSel ) {
           if ( itrackSel == AliTrigChEffOutput::kSelectTrack && ! isSelected ) continue;
           for ( Int_t itrig=0; itrig<selectTrigClasses.GetEntries(); ++itrig ) {
             TString trigClassName = ((TObjString*)selectTrigClasses.At(itrig))->GetString();
-          
+
             histoName = fAnalysisOutput->GetHistoName(AliTrigChEffOutput::kHcheckBoard, -1, -1, itrackSel, matchTrig, imethod);
             ((TH2F*)GetMergeableObject(physSel, trigClassName, centrality, histoName))->Fill(AliESDMuonTrack::GetSlatOrInfo(pattern), board);
           }
         }
         continue; // Track not good for efficiency calculation
       }
-      
+
       othersEfficient.Reset(1);
       for ( Int_t cath=0; cath<2; ++cath ) {
         for ( Int_t ich=0; ich<4; ++ich ) {
@@ -246,7 +246,7 @@ void AliAnalysisTaskTrigChEff::ProcessEvent(TString physSel, const TObjArray& se
           } // if chamber not efficient
         } // loop on chambers
       } // loop on cathodes
-      
+
       Bool_t rejectTrack = kTRUE;
       for ( Int_t ich=0; ich<4; ++ich ) {
         if ( othersEfficient[ich] > 0 ) {
@@ -254,42 +254,72 @@ void AliAnalysisTaskTrigChEff::ProcessEvent(TString physSel, const TObjArray& se
           break;
         }
       }
-      
+
+      // REMEMBER TO CUT from here...
+      if ( ! AliAnalysisMuonUtility::IsAODTrack(track) ) {
+        if ( matchTrig > 0 ) {
+          for ( Int_t ich=0; ich<4; ++ich ) {
+            if ( static_cast<AliESDMuonTrack*>(track)->TriggerFiredWithoutChamber(ich) != othersEfficient[ich] ) {
+              printf("Event %llu  Board %i  pt %g  ch %i methode %i ",Entry(),board,track->Pt(),ich,imethod);
+              for ( int icath=0; icath<2; ++icath) {
+                printf(" ");
+                for ( int jch=0; jch<4; ++jch ) {
+                  printf("%i",AliESDMuonTrack::IsChamberHit(pattern, icath, jch));
+                }
+              }
+              printf("  ");
+              Int_t nTrigWOch = 0;
+              for ( int jch=0; jch<4; ++jch ) {
+                Bool_t trigWOch = static_cast<AliESDMuonTrack*>(track)->TriggerFiredWithoutChamber(jch);
+                printf(" %i->%i",othersEfficient[jch], trigWOch);
+                if (trigWOch ) ++nTrigWOch;
+              }
+              if ( nTrigWOch != 1 && nTrigWOch != 4 ) {
+                printf("  0x%x  0x%x  0x%x  0x%x", static_cast<AliESDMuonTrack*>(track)->GetTriggerX1Pattern(), static_cast<AliESDMuonTrack*>(track)->GetTriggerX2Pattern(), static_cast<AliESDMuonTrack*>(track)->GetTriggerX3Pattern(), static_cast<AliESDMuonTrack*>(track)->GetTriggerX4Pattern());
+                printf("  0x%x  0x%x  0x%x  0x%x", static_cast<AliESDMuonTrack*>(track)->GetTriggerY1Pattern(), static_cast<AliESDMuonTrack*>(track)->GetTriggerY2Pattern(), static_cast<AliESDMuonTrack*>(track)->GetTriggerY3Pattern(), static_cast<AliESDMuonTrack*>(track)->GetTriggerY4Pattern());
+              }
+              printf("\n");
+            } // found difference
+          } // loop on chambers
+        } // matchTrig>0
+      }
+      // ...to here
+
       if ( rejectTrack ) continue;
-      
+
       slat = AliESDMuonTrack::GetSlatOrInfo(pattern);
-      
+
       for ( Int_t ich=0; ich<4; ++ich ) {
         if ( ! othersEfficient[ich] )
-          continue; // Reject track if the info of the chamber under study 
+          continue; // Reject track if the info of the chamber under study
         // is necessary to create the track itself
-        
+
         Int_t iChamber = 11 + ich;
-        
+
         Bool_t hitsBend = AliESDMuonTrack::IsChamberHit(pattern, 0, ich);
         Bool_t hitsNonBend = AliESDMuonTrack::IsChamberHit(pattern, 1, ich);
-        
+
         Bool_t fillHisto[AliTrigChEffOutput::kNcounts] = {
           hitsBend,
           hitsNonBend,
           ( hitsBend && hitsNonBend ),
           kTRUE
         };
-        
+
         for ( Int_t itrackSel=0; itrackSel<AliTrigChEffOutput::kNtrackSel; ++itrackSel ) {
           if ( itrackSel == AliTrigChEffOutput::kSelectTrack && ! isSelected ) continue;
           for (Int_t icount=0; icount<AliTrigChEffOutput::kNcounts; ++icount){
             if ( ! fillHisto[icount] ) continue;
             for ( Int_t itrig=0; itrig<selectTrigClasses.GetEntries(); ++itrig ) {
               TString trigClassName = ((TObjString*)selectTrigClasses.At(itrig))->GetString();
-              
+
               histoName = fAnalysisOutput->GetHistoName(AliTrigChEffOutput::kHchamberEff, icount, -1, itrackSel, matchTrig, imethod);
               static_cast<TH1*>(GetMergeableObject(physSel, trigClassName, centrality, histoName))->Fill(iChamber);
-            
+
               if ( effFlag < AliESDMuonTrack::kSlatEff ) continue; // Track crossed different slats
               histoName = fAnalysisOutput->GetHistoName(AliTrigChEffOutput::kHslatEff, icount, ich, itrackSel, matchTrig, imethod);
               static_cast<TH1*>(GetMergeableObject(physSel, trigClassName, centrality, histoName))->Fill(slat);
-            
+
               if ( effFlag < AliESDMuonTrack::kBoardEff ) continue; // Track crossed different boards
               histoName = fAnalysisOutput->GetHistoName(AliTrigChEffOutput::kHboardEff, icount, ich, itrackSel, matchTrig, imethod);
               static_cast<TH1*>(GetMergeableObject(physSel, trigClassName, centrality, histoName))->Fill(board);
@@ -299,7 +329,7 @@ void AliAnalysisTaskTrigChEff::ProcessEvent(TString physSel, const TObjArray& se
       } // loop on chambers
     } // loop on tracks
   } // loop on eff methods
-  
+
   PostData(2, fList);
 }
 
@@ -312,7 +342,7 @@ void AliAnalysisTaskTrigChEff::Terminate(Option_t *)
   //
 
   AliVAnalysisMuon::Terminate("");
-  
+
   if ( ! fMergeableCollection ) return;
 
   delete fAnalysisOutput;
@@ -344,26 +374,26 @@ void AliAnalysisTaskTrigChEff::Terminate(Option_t *)
     else if ( currName.Contains("From") ) methodSel.Add(new TObjString(currName));
   }
   delete optArr;
-  
+
   if ( trackSel.GetEntries() == 0 ) trackSel.Add(new TObjString(fAnalysisOutput->GetHistoName(-1,-1,-1,AliTrigChEffOutput::kSelectTrack,AliTrigChEffOutput::kMatchApt,-1)));
   if ( methodSel.GetEntries() == 0 ) methodSel.Add(new TObjString(fAnalysisOutput->GetHistoName(-1, -1, -1, -1, -1, AliTrigChEffOutput::kEffFromTrack)));
 
   furtherOpt.ToUpper();
-  
+
   Int_t chosenType = ( furtherOpt.Contains("BOARD") ) ? AliTrigChEffOutput::kHboardEff : AliTrigChEffOutput::kHslatEff;
 
   igroup1++;
   igroup2 = 0;
   TString histoName = "", yAxisTitle = "";
-  
+
   TH1 *num = 0x0;
   TH1 *den = 0x0;
   TGraphAsymmErrors* effGraph = 0x0;
-  
+
   ////////////////
   // Show tests //
   ////////////////
-  
+
   for ( Int_t icount=0; icount<AliTrigChEffOutput::kNcounts-1; ++icount ) {
     currName = fAnalysisOutput->GetHistoName(chosenType, icount, -1, -1, -1, -1);
     currName += "_can";
@@ -408,7 +438,7 @@ void AliAnalysisTaskTrigChEff::Terminate(Option_t *)
                     continue;
                   }
                   Double_t currX, currY, baseX, baseY, errYlow = 0., errYhigh = 0., newY = 0.;
-                  Double_t refVal = 1., errY = 0.; 
+                  Double_t refVal = 1., errY = 0.;
                   for ( Int_t ipoint=0; ipoint<effGraph->GetN(); ipoint++ ) {
                     refGraph->GetPoint(ipoint, baseX, baseY);
                     effGraph->GetPoint(ipoint, currX, currY);
@@ -469,11 +499,11 @@ void AliAnalysisTaskTrigChEff::Terminate(Option_t *)
   delete physSel;
   delete trigClasses;
   delete centrality;
-  
-   
+
+
   fList = dynamic_cast<TList*>(GetOutputData(2));
   if ( fList ) {
-  
+
     ///////////////////////////
     // Show final efficiency //
     ///////////////////////////
@@ -485,10 +515,10 @@ void AliAnalysisTaskTrigChEff::Terminate(Option_t *)
         TString canName = Form("efficiencyPer%s_%s",baseName[itype].Data(),effName[icount].Data());
         TCanvas* can = new TCanvas(canName.Data(),canName.Data(),10*(1+AliTrigChEffOutput::kNcounts*itype+icount),10*(1+AliTrigChEffOutput::kNcounts*itype+icount),310,310);
         can->SetFillColor(10); can->SetHighLightColor(10);
-        can->SetLeftMargin(0.15); can->SetBottomMargin(0.15);  
+        can->SetLeftMargin(0.15); can->SetBottomMargin(0.15);
         if ( itype > 0 )
           can->Divide(2,2);
-        
+
         for ( Int_t ich=-1; ich<4; ich++ ) {
           histoName = fAnalysisOutput->GetHistoName(baseIndex[itype], icount, ich, -1, -1, -1);
           num = static_cast<TH1*>(fList->FindObject(histoName.Data()));
@@ -507,7 +537,7 @@ void AliAnalysisTaskTrigChEff::Terminate(Option_t *)
     } // loop on histo
   }
 
-  
+
   if ( ! outFileOpt.IsNull() ) {
     TObjArray* outFileOptList = outFileOpt.Tokenize("?");
     AliInfo(Form("Creating file %s", outFileOptList->At(0)->GetName()));
