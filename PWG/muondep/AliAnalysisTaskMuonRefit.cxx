@@ -14,7 +14,6 @@
  **************************************************************************/
 
 /* $Id$ */
-#include <map>
 
 // ROOT includes
 #include <TString.h>
@@ -171,8 +170,6 @@ void AliAnalysisTaskMuonRefit::UserExec(Option_t *)
 
   LoadBranches();
 
-  std::map<UInt_t,Bool_t> trackToIsRecomputedMap;
-
   Int_t nTracks = (Int_t)esd->GetNumberOfMuonTracks();
   if (nTracks < 1) return;
 
@@ -216,31 +213,32 @@ void AliAnalysisTaskMuonRefit::UserExec(Option_t *)
     newTrack->SetHitsPatternInTrigChTrk(0);
   }
 
-  // printf("\nNew event\n"); // REMEMBER TO CUT
-
   // reconstruct trigger tracks
-  AliMUONVTriggerStore *trigStore = fESDInterface->GetTriggers();
-  AliMUONVTriggerStore *recoTrigStore = fESDInterface->GetRecoTriggers();
+  // In the ESD we have both the standard trigger tracks as well as the recomputed tracks
+  // (only for those tracks that have algorithm erros that can in principle change the track itself)
+  // The recomputed tracks are ghosts by definition.
+  // For the refit, we only keep one of the two, depending on the user choice.
+  AliMUONVTriggerStore *trigStore = fUseRecomputedTrigger ? fESDInterface->GetRecoTriggers() : fESDInterface->GetTriggers();
   AliMUONVTriggerTrackStore *trigTrackStore = AliMUONESDInterface::NewTriggerTrackStore();
   if (!trigTrackStore) return;
   AliMUONVTrackReconstructor* tracker = AliMUONESDInterface::GetTracker();
   tracker->EventReconstructTrigger(*fTriggerCircuit, *trigStore, *trigTrackStore);
-  // Add recomputed trigger tracks only when the response differs from raw
-  tracker->EventReconstructTrigger(*fTriggerCircuit, *recoTrigStore, *trigTrackStore, kTRUE);
 
   // recover the hit pattern for all trigger tracks
   TClonesArray *esdTracks = (TClonesArray*) esd->FindListObject("MuonTracks");
-  TString debugStr = ""; Bool_t hasRecomputed = kFALSE;// REMEMBER TO CUT
+  TString debugStr = ""; Bool_t hasRecomputed = kFALSE; // TODO: REMOVE
   for (Int_t iTrack = 0; iTrack < nTracks; iTrack++) {
     AliESDMuonTrack* esdTrack = (AliESDMuonTrack*) esdTracks->UncheckedAt(iTrack);
-    debugStr += Form("Track %i board %i errors %i (serious %i) recomputed %i\n",esdTrack->GetUniqueID(),esdTrack->LoCircuit(),esdTrack->GetTriggerAlgoErrors(),AliMUONLocalTrigger::AlgoErrAffectsTrigTrackReco(esdTrack->GetTriggerAlgoErrors()),esdTrack->IsRecomputedTrigger()); if ( esdTrack->IsRecomputedTrigger() ) hasRecomputed = kTRUE; // REMEMBER TO CUT
+    debugStr += Form("Track %i ID %i board %i errors %i (serious %i) recomputed %i\n", iTrack, esdTrack->GetUniqueID(),esdTrack->LoCircuit(),esdTrack->GetTriggerAlgoErrors(),AliMUONLocalTrigger::AlgoErrAffectsTrigTrackReco(esdTrack->GetTriggerAlgoErrors()),esdTrack->IsRecomputedTrigger()); if ( esdTrack->IsRecomputedTrigger() ) hasRecomputed = kTRUE; // TODO: REMOVE
     if (!esdTrack->ContainTriggerData()) continue;
     // use the UniqueID of the local trigger in case several tracks match the same trigger
     AliMUONLocalTrigger *locTrg = fESDInterface->FindLocalTrigger(esdTrack->LoCircuit(),esdTrack->IsRecomputedTrigger());
     AliMUONTriggerTrack *trigTrack = (AliMUONTriggerTrack*) trigTrackStore->FindObject(locTrg->GetUniqueID());
+    // Since we keep only standard or recomputed trigger tracks,
+    // the trig track store does not contain all ESDs.
+    // The find can therefore return a null pointer
+    if ( ! trigTrack ) continue;
     trigTrack->SetHitsPatternInTrigCh(esdTrack->GetHitsPatternInTrigCh());
-    // if ( trigTrack->HasAlgoErrors() )
-    // printf("Trig track %u (loTrg %u): matched %i  recomputed %i\n",trigTrack->GetUniqueID(),locTrg->GetUniqueID(),esdTrack->ContainTrackerData(),trigTrack->IsRecomputedResponse()); // REMEMBER TO CUT
   }
 
   // match tracker/trigger tracks
@@ -248,17 +246,16 @@ void AliAnalysisTaskMuonRefit::UserExec(Option_t *)
   const Float_t kZFilterOut = AliMUONConstants::MuonFilterZEnd();
   const Float_t kFilterThickness = kZFilterOut-AliMUONConstants::MuonFilterZBeg();
   nextNewTrack.Reset();
-  const AliMUONVTriggerStore* trStore = ( fUseRecomputedTrigger ) ? recoTrigStore : trigStore;
   while ((newTrack = static_cast<AliMUONTrack*>(nextNewTrack()))) {
     AliMUONTrackParam trackParam(*((AliMUONTrackParam*) (newTrack->GetTrackParamAtCluster()->Last())));
     AliMUONTrackExtrap::ExtrapToZCov(&trackParam, kZFilterOut);
     AliMUONTrackExtrap::AddMCSEffect(&trackParam, kFilterThickness, AliMUONConstants::MuonFilterX0());
     AliMUONTrackExtrap::ExtrapToZCov(&trackParam, AliMUONConstants::DefaultChamberZ(kFirstTrigCh));
-    AliMUONTriggerTrack *matchedTriggerTrack = fTrackHitPattern->MatchTriggerTrack(newTrack, trackParam, *trigTrackStore, *trStore, fUseRecomputedTrigger);
+    AliMUONTriggerTrack *matchedTriggerTrack = fTrackHitPattern->MatchTriggerTrack(newTrack, trackParam, *trigTrackStore, *trigStore);
     if ( matchedTriggerTrack ) {
-      // printf("Matched trig track %u: is recomputed %i\n",matchedTriggerTrack->GetUniqueID(),matchedTriggerTrack->IsRecomputedResponse()); // REMEMBER TO CUT
+      // printf("Matched trig track %u: is recomputed %i\n",matchedTriggerTrack->GetUniqueID(),matchedTriggerTrack->IsRecomputedResponse()); // TODO: REMOVE
       newTrack->SetHitsPatternInTrigCh(matchedTriggerTrack->GetHitsPatternInTrigCh());
-      trackToIsRecomputedMap[newTrack->GetUniqueID()] = matchedTriggerTrack->IsRecomputedResponse();
+      // trackToIsRecomputedMap[newTrack->GetUniqueID()] = matchedTriggerTrack->IsRecomputedResponse();
     }
   }
 
@@ -271,7 +268,7 @@ void AliAnalysisTaskMuonRefit::UserExec(Option_t *)
     // keep the memory of old ghosts to conserve their Id if they are still ghosts after refitting
     // and remember to remove them before adding the new ghosts
     if (!esdTrack->ContainTrackerData()) {
-      AliMUONLocalTrigger *locTrg = (esdTrack->ContainTriggerData()) ? fESDInterface->FindLocalTrigger(esdTrack->LoCircuit(),esdTrack->IsRecomputedTrigger()) : 0x0;
+      AliMUONLocalTrigger *locTrg = (esdTrack->ContainTriggerData()) ? fESDInterface->FindLocalTrigger(esdTrack->LoCircuit(),fUseRecomputedTrigger) : 0x0;
       if (locTrg && !locTrg->IsNull()) oldGhosts.AddLast(locTrg);
       if (esdTrack->GetUniqueID() <= firstGhostId) firstGhostId = esdTrack->GetUniqueID()-1;
       esdTracksToRemove.AddLast(esdTrack);
@@ -289,7 +286,7 @@ void AliAnalysisTaskMuonRefit::UserExec(Option_t *)
 
       // find the corresponding trigger info and eventually restore the old one
       AliMUONLocalTrigger *locTrg = 0x0;
-      if (newTrack->GetMatchTrigger() > 0) locTrg = fESDInterface->FindLocalTrigger(newTrack->LoCircuit(),trackToIsRecomputedMap[newTrack->GetUniqueID()]);
+      if (newTrack->GetMatchTrigger() > 0) locTrg = fESDInterface->FindLocalTrigger(newTrack->LoCircuit(),fUseRecomputedTrigger);
       else if (noLongerMatched && !fKeepOldParam) {
 	locTrg = fESDInterface->FindLocalTrigger(esdTrack->LoCircuit(),esdTrack->IsRecomputedTrigger());
 	newTrack->SetMatchTrigger(esdTrack->GetMatchTrigger());
@@ -361,33 +358,45 @@ void AliAnalysisTaskMuonRefit::UserExec(Option_t *)
   esdTracks->Compress();
 
   // add new ghosts (ignoring tracks marked as bad or no longer matched)
+  TIter nextGhost(trigStore->CreateIterator());
   AliMUONLocalTrigger *locTrg = 0x0;
-  for ( Int_t itrigStore=0; itrigStore<2; ++itrigStore ) {
-    AliMUONVTriggerStore* currStore = ( itrigStore == 0 ) ? trigStore : recoTrigStore;
-    TIter nextGhost(currStore->CreateIterator());
-    while ((locTrg = static_cast<AliMUONLocalTrigger*>(nextGhost()))) {
-      Bool_t alreadyThere = kFALSE;
-      for (Int_t iTrack = 0; iTrack < esdTracks->GetEntriesFast(); iTrack++) {
-        esdTrack = (AliESDMuonTrack*) esdTracks->UncheckedAt(iTrack);
-        alreadyThere = ((esdTrack->LoCircuit() == locTrg->LoCircuit()) && (esdTrack->IsRecomputedTrigger() == locTrg->IsRecomputedResponse()) && !esdTrack->TestBit(BIT(21)));
-        if (alreadyThere) break;
-      }
-      if (!alreadyThere) {
-        UInt_t ghostId = oldGhosts.Contains(locTrg) ? locTrg->GetUniqueID() : firstGhostId--;
-        AliMUONTriggerTrack *trigTrack = (AliMUONTriggerTrack*) trigTrackStore->FindObject(locTrg->GetUniqueID());
-        AliMUONESDInterface::MUONToESD(*locTrg, *esd, ghostId, trigTrack);
-      }
+  while ((locTrg = static_cast<AliMUONLocalTrigger*>(nextGhost()))) {
+    Bool_t alreadyThere = kFALSE;
+    // if ( hasRecomputed ) printf("LoCircuit %i  isRecomputed %i  nTracks %i\n", locTrg->LoCircuit(), locTrg->IsRecomputedResponse(), esdTracks->GetEntriesFast()); // TODO: REMOVE
+    for (Int_t iTrack = 0; iTrack < esdTracks->GetEntriesFast(); iTrack++) {
+      esdTrack = (AliESDMuonTrack*) esdTracks->UncheckedAt(iTrack);
+      alreadyThere = ((esdTrack->LoCircuit() == locTrg->LoCircuit()) && (esdTrack->IsRecomputedTrigger() == locTrg->IsRecomputedResponse()) && !esdTrack->TestBit(BIT(21)));
+      // if ( hasRecomputed ) printf("LoCircuit %i (%i)  isRecomputed %i (%i)\n", locTrg->LoCircuit(), esdTrack->LoCircuit(), locTrg->IsRecomputedResponse(), esdTrack->IsRecomputedTrigger()); // TODO: REMOVE
+      if (alreadyThere) break;
+    }
+    if (!alreadyThere) {
+      UInt_t ghostId = oldGhosts.Contains(locTrg) ? locTrg->GetUniqueID() : firstGhostId--;
+      AliMUONTriggerTrack *trigTrack = (AliMUONTriggerTrack*) trigTrackStore->FindObject(locTrg->GetUniqueID());
+      AliMUONESDInterface::MUONToESD(*locTrg, *esd, ghostId, trigTrack);
     }
   }
 
-  if ( esdTracks->GetEntries() != nTracks || hasRecomputed ) { // REMEMBER TO CUT
-    printf("Ntracks %i => %i\n",nTracks,esdTracks->GetEntries()); // REMEMBER TO CUT
+  if ( esdTracks->GetEntries() != nTracks || hasRecomputed ) { // TODO: REMOVE
+    AliMUONLocalTrigger *locTrg = nullptr;
+    // TIter nextStdTrig(fESDInterface->GetTriggers()->CreateIterator());
+    // printf("Std trigs:\n");
+    // while((locTrg = static_cast<AliMUONLocalTrigger*>(nextStdTrig()))) {
+    //   printf("LoCircuit %i  isRecomputed %i\n", locTrg->LoCircuit(), locTrg->IsRecomputedResponse()); // TODO: REMOVE
+    // }
+    // TIter nextRecoTrig(fESDInterface->GetRecoTriggers()->CreateIterator());
+    // printf("Reco trigs\n");
+    // while((locTrg = static_cast<AliMUONLocalTrigger*>(nextRecoTrig()))) {
+    //   printf("LoCircuit %i  isRecomputed %i\n", locTrg->LoCircuit(), locTrg->IsRecomputedResponse()); // TODO: REMOVE
+    // }
+
+    printf("Ntracks %i => %i\n",nTracks,esdTracks->GetEntries()); // TODO: REMOVE
     debugStr += " ==> \n";
-    AliESDMuonTrack* tmpTrack = nullptr; // REMEMBER TO CUT
-    TIter next(esdTracks); // REMEMBER TO CUT
-    while ( (tmpTrack = static_cast<AliESDMuonTrack*>(next())) ) debugStr += Form("Track %i board %i errors %i (serious %i) recomputed %i\n",tmpTrack->GetUniqueID(),tmpTrack->LoCircuit(),tmpTrack->GetTriggerAlgoErrors(),AliMUONLocalTrigger::AlgoErrAffectsTrigTrackReco(tmpTrack->GetTriggerAlgoErrors()),tmpTrack->IsRecomputedTrigger()); // REMEMBER TO CUT
+    AliESDMuonTrack* tmpTrack = nullptr; // TODO: REMOVE
+    int iTrack = 0; // TODO: REMOVE
+    TIter next(esdTracks); // TODO: REMOVE
+    while ( (tmpTrack = static_cast<AliESDMuonTrack*>(next())) ) debugStr += Form("Track %i ID %i board %i errors %i (serious %i) recomputed %i\n",iTrack++,tmpTrack->GetUniqueID(),tmpTrack->LoCircuit(),tmpTrack->GetTriggerAlgoErrors(),AliMUONLocalTrigger::AlgoErrAffectsTrigTrackReco(tmpTrack->GetTriggerAlgoErrors()),tmpTrack->IsRecomputedTrigger()); // TODO: REMOVE
     printf("%s\n", debugStr.Data());
-  } // REMEMBER TO CUT
+  } // TODO: REMOVE
 
 }
 
