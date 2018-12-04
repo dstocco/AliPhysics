@@ -19,9 +19,16 @@ class AliMCEvent;
 class AliVParticle;
 class AliVVertex;
 class AliCFGridSparse;
+class THnSparse;
 
 class AliAnalysisMuonUtility : public TObject {
  public:
+
+ // Utility methods for THnSparse
+  static Bool_t SetSparseRange(THnSparse* hSparse,
+                               Int_t ivar, const char* labelName,
+                               Double_t varMin, Double_t varMax,
+                               const char* option = "");
   
   // Utility methods for CF container
   static Bool_t SetSparseRange(AliCFGridSparse* gridSparse,

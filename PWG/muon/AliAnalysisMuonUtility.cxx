@@ -554,6 +554,62 @@ Bool_t AliAnalysisMuonUtility::EAGetTZEROFlags(const AliVEvent* event, Bool_t& b
 }
 
 //_______________________________________________________________________
+Bool_t AliAnalysisMuonUtility::SetSparseRange(THnSparse* hSparse,
+                                              Int_t ivar, const char* labelName,
+                                              Double_t varMin, Double_t varMax,
+                                              const char* option)
+{
+  //
+  /// Set range in a smart way.
+  /// Allows to select a bin from the label.
+  /// Check the bin limits.
+  //
+
+  TAxis* axis = hSparse->GetAxis(ivar);
+    if ( ! axis ) {
+    printf("Warning: Axis %i not found in %s", ivar, hSparse->GetName());
+    return kFALSE;
+  }
+
+  TString opt(option);
+  Int_t minVarBin = -1, maxVarBin = -1;
+  TString label(labelName);
+  if ( ! label.IsNull() ) {
+    minVarBin = axis->FindBin(labelName);
+    if ( minVarBin < 1 ) {
+      printf("Warning: %s: label %s not found. Nothing done", hSparse->GetName(), labelName);
+      return kFALSE;
+    }
+    maxVarBin = minVarBin;
+  }
+  else if ( opt.Contains( "USEBIN", TString::kIgnoreCase ) ) {
+    minVarBin = (Int_t)varMin;
+    maxVarBin = (Int_t)varMax;
+  }
+  else {
+    minVarBin = axis->FindBin(varMin);
+    maxVarBin = axis->FindBin(varMax);
+  }
+  
+  if ( axis->GetFirst() == minVarBin && axis->GetLast() == maxVarBin && axis->TestBit(TAxis::kAxisRange) ) return kFALSE;
+
+  axis->SetRange(minVarBin, maxVarBin);
+
+  TString outString = Form("%s new range: %.5f < %s < %.5f", hSparse->GetName(), axis->GetBinLowEdge(axis->GetFirst()), axis->GetTitle(), axis->GetBinUpEdge(axis->GetLast()));
+  TString binLabel = axis->GetBinLabel(axis->GetFirst());
+  if ( ! binLabel.IsNull() ) {
+    outString += " ( ";
+    for ( Int_t ibin = axis->GetFirst(); ibin <= axis->GetLast(); ibin++ ) {
+      outString += Form("%s ", axis->GetBinLabel(ibin));
+    }
+    outString += ")";
+  }
+  printf("Info: %s\n",outString.Data());
+  
+  return kTRUE;
+}
+
+//_______________________________________________________________________
 Bool_t AliAnalysisMuonUtility::SetSparseRange(AliCFGridSparse* gridSparse,
                                         Int_t ivar, TString labelName,
                                         Double_t varMin, Double_t varMax,
@@ -564,38 +620,8 @@ Bool_t AliAnalysisMuonUtility::SetSparseRange(AliCFGridSparse* gridSparse,
   /// Allows to select a bin from the label.
   /// Check the bin limits.
   //
-  
-  option.ToUpper();
-  Int_t minVarBin = -1, maxVarBin = -1;
-  TAxis* axis = gridSparse->GetAxis(ivar);
-  
-  if ( ! axis ) {
-    printf("Warning: Axis %i not found in %s", ivar, gridSparse->GetName());
-    return kFALSE;
-  }
-  
-  if ( ! labelName.IsNull() ) {
-    minVarBin = axis->FindBin(labelName.Data());
-    maxVarBin = minVarBin;
-    if ( minVarBin < 1 ) {
-      printf("Warning: %s: label %s not found. Nothing done", gridSparse->GetName(), labelName.Data());
-      return kFALSE;
-    }
-  }
-  else if ( option.Contains( "USEBIN" ) ) {
-    minVarBin = (Int_t)varMin;
-    maxVarBin = (Int_t)varMax;
-  }
-  else {
-    minVarBin = axis->FindBin(varMin);
-    maxVarBin = axis->FindBin(varMax);
-  }
-  
-  if ( axis->GetFirst() == minVarBin && axis->GetLast() == maxVarBin && axis->TestBit(TAxis::kAxisRange) ) return kFALSE;
-  
-  gridSparse->SetRangeUser(ivar, axis->GetBinCenter(minVarBin), axis->GetBinCenter(maxVarBin));
-  
-  return kTRUE;
+
+  return SetSparseRange(gridSparse->GetGrid(), ivar, labelName.Data(), varMin, varMax, option.Data());
 }
 
 //_______________________________________________________________________
